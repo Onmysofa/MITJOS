@@ -65,6 +65,8 @@ static physaddr_t check_va2pa(pde_t *pgdir, uintptr_t va);
 static void check_page(void);
 static void check_page_installed_pgdir(void);
 
+static void boot_map_region_bigpage(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm);
+
 // This simple physical memory allocator is used only while JOS is setting
 // up its virtual memory system.  page_alloc() is the real allocator.
 //
@@ -211,17 +213,10 @@ mem_init(void)
 	// Permissions: kernel RW, user NONE
 	// Your code goes here:
 
-    if((unsigned)(-KERNBASE) > npages * PGSIZE) {
-        boot_map_region(kern_pgdir, KERNBASE, npages * PGSIZE, 0, PTE_W);
 
-        for(i = 0; i < ROUNDUP((unsigned)(-KERNBASE) - npages * PGSIZE, PGSIZE); i += PGSIZE) {
-            page_insert(kern_pgdir, pa2page(0), (void *)(KERNBASE + npages * PGSIZE + i), PTE_W);
-            pa2page(0)->pp_ref--;
-        }
-    }
-    else {
-        boot_map_region(kern_pgdir, KERNBASE, (unsigned)(-KERNBASE), 0, PTE_W);
-    }
+    boot_map_region(kern_pgdir, KERNBASE, (unsigned)(-KERNBASE), 0, PTE_W);
+    //boot_map_region_bigpage(kern_pgdir, KERNBASE, (unsigned)(-KERNBASE), 0, PTE_W);
+
 
 	// Check that the initial page directory has been set up correctly.
 	check_kern_pgdir();
@@ -427,6 +422,25 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
         *pte = (pa + i * PGSIZE) | perm | PTE_P;
     }
 }
+
+//
+// Newly added function for challenge.
+// This function maps the kernel address to linear address in 4M pages
+//
+static void
+boot_map_region_bigpage(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
+{
+    #define PGSIZE_BIG 0x400000
+	size_t pg_num = size/PGSIZE_BIG;
+	int i = 0;
+    for(i = 0; i < pg_num; i++) {
+        pte_t * pde = &pgdir[PDX(va)];
+        *pde = (pa + i * PGSIZE_BIG) | perm | PTE_P | PTE_PS;
+    }
+}
+
+
+
 
 //
 // Map the physical page 'pp' at virtual address 'va'.
