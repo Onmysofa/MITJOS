@@ -13,7 +13,7 @@
 #include <kern/trap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
-
+extern int16_t CGA_COLOR_MASK;
 
 struct Command {
 	const char *name;
@@ -25,6 +25,8 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "backtrace", "Trace the stack and call hierarchy", mon_backtrace },
+	{ "chcolor", "Change the default display color", mon_chcolor }
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
@@ -59,11 +61,64 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
-	// Your code here.
+	cprintf("Stack backtrace:\n");
+	unsigned ebp = read_ebp();
+	unsigned eip;
+	char funn[100];
+	struct Eipdebuginfo info;
+	int i;
+	while(ebp != 0) // Small trick found in entry.S
+	{
+        eip = *(unsigned*)(ebp+4);
+        debuginfo_eip(eip, &info);
+        for(i = 0; i < info.eip_fn_namelen; i++)
+            funn[i] = info.eip_fn_name[i];
+        funn[info.eip_fn_namelen] = 0;
+        cprintf("  ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n",
+        ebp, *(unsigned*)(ebp+4), *(unsigned*)(ebp+8), *(unsigned*)(ebp+12), *(unsigned*)(ebp+16), *(unsigned*)(ebp+20), *(unsigned*)(ebp+24));
+        cprintf("         %s:%d: %s+%d\n",
+        info.eip_file, info.eip_line, funn, eip - info.eip_fn_addr);
+        ebp = *(unsigned*)ebp;
+    }
 	return 0;
 }
 
+int
+mon_chcolor(int argc, char **argv, struct Trapframe *tf)
+{
+    int16_t bg, ft;
+    if(argc != 2)
+    {
+        cprintf("Argument number error\n");
+    }
+    else if(strlen(argv[1]) != 2)
+    {
+        cprintf("Argument error");
+    }
+    else
+    {
 
+        switch(argv[1][0])
+        {
+            case 'r': bg = 1<<6; break;
+            case 'g': bg = 1<<5; break;
+            case 'b': bg = 1<<4; break;
+            case 'w': bg = 0x70; break;
+            default: bg = 0x00;
+        }
+        switch(argv[1][1])
+        {
+            case 'r': ft = 1<<2; break;
+            case 'g': ft = 1<<1; break;
+            case 'b': ft = 1; break;
+            case 'w': ft = 0x07; break;
+            default: ft = 0x00;
+        }
+        CGA_COLOR_MASK = (bg|ft)<<8;
+    }
+    cprintf("Color changed\n");
+    return 0;
+}
 
 /***** Kernel monitor command interpreter *****/
 
