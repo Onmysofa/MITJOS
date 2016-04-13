@@ -165,6 +165,10 @@ mem_init(void)
 	// Make 'envs' point to an array of size 'NENV' of 'struct Env'.
 	// LAB 3: Your code here.
 
+    envs = boot_alloc(NENV * sizeof(struct Env));
+    memset(envs, 0, NENV * sizeof(struct Env));
+
+
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
 	// up the list of free physical pages. Once we've done so, all further
@@ -200,6 +204,10 @@ mem_init(void)
 	//    - the new image at UENVS  -- kernel R, user R
 	//    - envs itself -- kernel RW, user NONE
 	// LAB 3: Your code here.
+
+    for(i = 0; i < ROUNDUP(NENV * sizeof(struct Env), PGSIZE); i += PGSIZE) {
+        page_insert(kern_pgdir, pa2page(PADDR(envs) + i), (void *)(UENVS + i), PTE_U);
+	}
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
@@ -596,7 +604,25 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
+	const void *p;
+	pte_t *pte;
+	int is_valid = 1;
+	const void *lim = ROUNDUP(va+len, PGSIZE);
+	for(p = va; p < lim; p += PGSIZE) {
+        pte = pgdir_walk(env->env_pgdir, p, 0);
+        if(pte == NULL
+            || (*pte & (perm|PTE_P)) != (perm|PTE_P)
+            || p >= (const void *)ULIM) {
+            is_valid = 0;
+            user_mem_check_addr = (uintptr_t)ROUNDDOWN(p, PGSIZE);
+            if(user_mem_check_addr < (uintptr_t)va) user_mem_check_addr = (uintptr_t)va;
+            break;
+        }
+    }
 
+    if(!is_valid) {
+        return -E_FAULT;
+    }
 	return 0;
 }
 

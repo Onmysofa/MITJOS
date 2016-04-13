@@ -11,6 +11,7 @@
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
 #include <kern/trap.h>
+#include <kern/env.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 extern int16_t CGA_COLOR_MASK;
@@ -26,7 +27,9 @@ static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "Trace the stack and call hierarchy", mon_backtrace },
-	{ "chcolor", "Change the default display color", mon_chcolor }
+	{ "chcolor", "Change the default display color", mon_chcolor },
+	{ "continue", "Continue from a breakpoint", mon_continue },
+	{ "si", "Continue from a breakpoint with single step", mon_si }
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
@@ -119,6 +122,32 @@ mon_chcolor(int argc, char **argv, struct Trapframe *tf)
     cprintf("Color changed\n");
     return 0;
 }
+
+int
+mon_continue(int argc, char **argv, struct Trapframe *tf)
+{
+    if(tf == NULL) {
+        cprintf("Not a breakpoint\n");
+        return 0;
+    }
+    tf->tf_eflags &= ~FL_TF;
+    env_pop_tf(tf);
+    return 0;
+}
+
+int
+mon_si(int argc, char **argv, struct Trapframe *tf)
+{
+    if(tf == NULL) {
+        cprintf("Not a breakpoint\n");
+        return 0;
+    }
+    cprintf("Single Step\n");
+    tf->tf_eflags |= FL_TF;
+    env_pop_tf(tf);
+    return 0;
+}
+
 
 /***** Kernel monitor command interpreter *****/
 
