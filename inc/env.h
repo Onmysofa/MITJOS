@@ -67,7 +67,7 @@ struct Env {
 	envid_t env_ipc_from;		// envid of the sender
 	int env_ipc_perm;		// Perm of page mapping received
 
-	// Lab 4 Challege Scheduling
+	// Lab 4 Challenge Scheduling
 	int env_sched_priority;
 	struct Env* env_sched_next;
 };

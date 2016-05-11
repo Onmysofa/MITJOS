@@ -430,7 +430,6 @@ env_free(struct Env *e)
 	physaddr_t pa;
 
     // Lab 4 Challenge Scheduling
-
     sched_recycle(e);
 
 	// If freeing the current environment, switch to kern_pgdir
