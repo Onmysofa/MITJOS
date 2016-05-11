@@ -121,7 +121,8 @@ env_init(void)
 	// LAB 3: Your code here.
     int i;
     env_free_list = NULL;
-    for(i = NENV; i >= 0; i--) {
+
+    for(i = NENV - 1; i >= 0; i--) {
         envs[i].env_id = 0;
         envs[i].env_link = env_free_list;
         env_free_list = envs + i;
@@ -194,7 +195,13 @@ env_setup_vm(struct Env *e)
     p->pp_ref++;
 
     for(i = PDX(UTOP); i < NPDENTRIES; i++) {
-        e->env_pgdir[i] = kern_pgdir[i];
+        if(kern_pgdir[i] & PTE_P) {
+            e->env_pgdir[i] = kern_pgdir[i];
+           // e->env_pgdir[i] = page2pa(np) | PTE_P | PTE_U | PTE_W;
+           // memmove(page2kva(np), KADDR(PTE_ADDR(kern_pgdir[i])), PGSIZE);
+        }
+        else
+            e->env_pgdir[i] = 0;
     }
 
 	// UVPT maps the env's own page table read-only.
@@ -261,6 +268,7 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 
 	// Enable interrupts while in user mode.
 	// LAB 4: Your code here.
+	e->env_tf.tf_eflags |= FL_IF;
 
 	// Clear the page fault handler until user installs one.
 	e->env_pgfault_upcall = 0;
@@ -271,6 +279,10 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 	// commit the allocation
 	env_free_list = e->env_link;
 	*newenv_store = e;
+
+	// Lab 4 Challenge Scheduling
+	e->env_sched_priority = SCHED_MAX_USER_PRIORITY;
+	sched_first_in_que(e);
 
 	cprintf("[%08x] new env %08x\n", curenv ? curenv->env_id : 0, e->env_id);
 	return 0;
@@ -417,6 +429,10 @@ env_free(struct Env *e)
 	uint32_t pdeno, pteno;
 	physaddr_t pa;
 
+    // Lab 4 Challenge Scheduling
+
+    sched_recycle(e);
+
 	// If freeing the current environment, switch to kern_pgdir
 	// before freeing the page directory, just in case the page
 	// gets reused.
@@ -458,6 +474,7 @@ env_free(struct Env *e)
 	e->env_status = ENV_FREE;
 	e->env_link = env_free_list;
 	env_free_list = e;
+
 }
 
 //
@@ -539,9 +556,11 @@ env_run(struct Env *e)
     }
     curenv = e;
     e->env_status = ENV_RUNNING;
+    //e->env_cpunum = cpunum();
     e->env_runs++;
 
     lcr3(PADDR(e->env_pgdir));
+    unlock_kernel();
     env_pop_tf(&e->env_tf);
 	//panic("env_run not yet implemented");
 }

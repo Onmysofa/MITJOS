@@ -61,6 +61,7 @@ i386_detect_memory(void)
 
 static void mem_init_mp(void);
 static void boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm);
+static void boot_clean_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa);
 static void check_page_free_list(bool only_low_memory);
 static void check_page_alloc(void);
 static void check_kern_pgdir(void);
@@ -290,7 +291,13 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
-
+	int i;
+	uintptr_t kstacktop;
+	for(i = 0; i < NCPU; i++) {
+        kstacktop = KSTACKTOP - i * (KSTKSIZE + KSTKGAP);
+        boot_clean_region(kern_pgdir, kstacktop - KSTKSIZE, KSTKSIZE, PADDR(percpu_kstacks[i]));
+        boot_map_region(kern_pgdir, kstacktop - KSTKSIZE, KSTKSIZE, PADDR(percpu_kstacks[i]), PTE_W);
+	}
 }
 
 // --------------------------------------------------------------
@@ -329,9 +336,18 @@ page_init(void)
 	// Change the code to reflect this.
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
+	extern unsigned char mpentry_start[], mpentry_end[];
 
 	struct PageInfo *p = pages;
 	p++;        // skip the first page
+	for (; p < pa2page((physaddr_t)MPENTRY_PADDR); p++) {
+		p->pp_ref = 0;
+		p->pp_link = page_free_list;
+		page_free_list = p;
+    }
+
+    p = pa2page(ROUNDUP(mpentry_end - mpentry_start + MPENTRY_PADDR, PGSIZE));
+
 	for (; p < pa2page((physaddr_t)IOPHYSMEM); p++) {
 		p->pp_ref = 0;
 		p->pp_link = page_free_list;
@@ -474,6 +490,19 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
         if((*pte) & PTE_P)
             panic("boot_map_region: PTE already exist");
         *pte = (pa + i * PGSIZE) | perm | PTE_P;
+    }
+}
+
+static void
+boot_clean_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa)
+{
+	// Fill this function in
+	size_t pg_num = size/PGSIZE;
+	int i = 0;
+    for(i = 0; i < pg_num; i++) {
+        pte_t * pte = pgdir_walk(pgdir, (void *)(va + i * PGSIZE), 0);
+        if((*pte) & PTE_P)
+            *pte = 0;
     }
 }
 
@@ -645,7 +674,14 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+	//panic("mmio_map_region not implemented");
+	size_t s = ROUNDUP(size, PGSIZE);
+	if(base + s > MMIOLIM)
+        panic("mmio_map_region: Memory overflow");
+    boot_map_region(kern_pgdir, base, s, pa, PTE_PCD|PTE_PWT|PTE_W);
+    base += s;
+    return (void *)(base - s);
+
 }
 
 static uintptr_t user_mem_check_addr;
@@ -676,14 +712,15 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 	pte_t *pte;
 	int is_valid = 1;
 	const void *lim = ROUNDUP(va+len, PGSIZE);
-	for(p = va; p < lim; p += PGSIZE) {
+	for(p = ROUNDDOWN(va, PGSIZE); p < lim; p += PGSIZE) {
         pte = pgdir_walk(env->env_pgdir, p, 0);
         if(pte == NULL
             || (*pte & (perm|PTE_P)) != (perm|PTE_P)
-            || p >= (const void *)ULIM) {
+            || (uintptr_t)p >= ULIM) {
             is_valid = 0;
             user_mem_check_addr = (uintptr_t)ROUNDDOWN(p, PGSIZE);
-            if(user_mem_check_addr < (uintptr_t)va) user_mem_check_addr = (uintptr_t)va;
+            if(user_mem_check_addr < (uintptr_t)va)
+                user_mem_check_addr = (uintptr_t)va;
             break;
         }
     }
