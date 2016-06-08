@@ -301,6 +301,25 @@ static int
 copy_shared_pages(envid_t child)
 {
 	// LAB 5: Your code here.
+	uint32_t addr, r;
+	int maxsize = NPDENTRIES * NPTENTRIES;
+	volatile pte_t *pte, *pde;
+
+	for(addr = UTEXT; addr < (UXSTACKTOP - PGSIZE); addr += PGSIZE) {
+        pde = &uvpd[PDX(addr)];
+        pte = &uvpt[addr/PGSIZE];
+        if(pde && *pde & PTE_P) {
+            if(pte && (*pte & PTE_P) && (*pte & PTE_U)) {
+                if(*pte & PTE_SHARE) {
+                    r = sys_page_map(
+                        0, (void *)addr, child, (void *)addr, *pte & PTE_SYSCALL
+                    );
+                    if(r < 0)
+                        return r;
+                }
+            }
+        }
+	}
 	return 0;
 }
 

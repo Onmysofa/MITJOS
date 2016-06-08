@@ -35,7 +35,8 @@ enum {
 	ENV_DYING,
 	ENV_RUNNABLE,
 	ENV_RUNNING,
-	ENV_NOT_RUNNABLE
+	ENV_NOT_RUNNABLE,
+	NENVSTATUS
 };
 
 // Special environment types
@@ -66,6 +67,13 @@ struct Env {
 	uint32_t env_ipc_value;		// Data value sent to us
 	envid_t env_ipc_from;		// envid of the sender
 	int env_ipc_perm;		// Perm of page mapping received
+
+	// Lab 4 Challenge Scheduling
+	int env_sched_priority;
+	struct Env* env_sched_next;
 };
+
+// Lab 4 Challenge Scheduling
+#define SCHED_MAX_USER_PRIORITY 4
 
 #endif // !JOS_INC_ENV_H

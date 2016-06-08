@@ -117,3 +117,9 @@ sys_ipc_recv(void *dstva)
 	return syscall(SYS_ipc_recv, 1, (uint32_t)dstva, 0, 0, 0, 0);
 }
 
+// Lab 5 Challenge
+int
+sys_page_clean_access(envid_t envid, void *va)
+{
+    return syscall(SYS_page_clean_access, 1, envid, (uint32_t) va, 0, 0, 0);
+}

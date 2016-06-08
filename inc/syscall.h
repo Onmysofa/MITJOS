@@ -17,6 +17,8 @@ enum {
 	SYS_yield,
 	SYS_ipc_try_send,
 	SYS_ipc_recv,
+    // Lab 5 Challenge
+	SYS_page_clean_access,
 	NSYSCALLS
 };
 

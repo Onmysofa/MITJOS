@@ -54,6 +54,65 @@ free_block(uint32_t blockno)
 // -E_NO_DISK if we are out of blocks.
 //
 // Hint: use free_block as an example for manipulating the bitmap.
+
+// Lab 5 Challenge
+bool
+va_is_accessed(void *va)
+{
+	return (uvpt[PGNUM(va)] & PTE_A) != 0;
+}
+
+int
+va_clean_accessed(void *va)
+{
+    if(block_is_free(((uint32_t)va - DISKMAP) / BLKSIZE))
+        return 0;
+	return sys_page_clean_access(0, va);
+}
+
+int
+compress()
+{
+    int i;
+	for(i = 2; i < DISKSIZE/BLKSIZE; i++) {
+        if(block_is_free(i))
+            return i;
+        if(!va_is_dirty(diskaddr(i)) && !va_is_accessed(diskaddr(i))) {
+            free_block(i);
+            return i;
+        }
+	}
+	for(i = 2; i < DISKSIZE/BLKSIZE; i++) {
+        if(block_is_free(i))
+            return i;
+        va_clean_accessed(diskaddr(i));
+        if(!va_is_dirty(diskaddr(i))) {
+            flush_block(diskaddr(i));
+            free_block(i);
+            return i;
+        }
+	}
+	for(i = 2; i < DISKSIZE/BLKSIZE; i++) {
+        if(block_is_free(i))
+            return i;
+        va_clean_accessed(diskaddr(i));
+        if(!va_is_accessed(diskaddr(i))) {
+            flush_block(diskaddr(i));
+            free_block(i);
+            return i;
+        }
+	}
+	for(i = 2; i < DISKSIZE/BLKSIZE; i++) {
+        if(block_is_free(i))
+            return i;
+        va_clean_accessed(diskaddr(i));
+        return i;
+	}
+
+
+	return -E_NO_MEM;
+}
+
 int
 alloc_block(void)
 {
@@ -62,8 +121,17 @@ alloc_block(void)
 	// super->s_nblocks blocks in the disk altogether.
 
 	// LAB 5: Your code here.
-	panic("alloc_block not implemented");
-	return -E_NO_DISK;
+	//panic("alloc_block not implemented");
+	int i;
+	for(i = 1; i < DISKSIZE/BLKSIZE; i++) {
+        if(block_is_free(i)) {
+            bitmap[i/32] &= ~(1<<(i%32));
+            flush_block(&bitmap[i/32]);
+            return i;
+        }
+	}
+    // Lab 5 Challenge
+	return compress();
 }
 
 // Validate the file system bitmap.
@@ -112,7 +180,7 @@ fs_init(void)
 	// Set "bitmap" to the beginning of the first bitmap block.
 	bitmap = diskaddr(2);
 	check_bitmap();
-	
+
 }
 
 // Find the disk block number slot for the 'filebno'th block in file 'f'.
@@ -135,7 +203,27 @@ static int
 file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool alloc)
 {
        // LAB 5: Your code here.
-       panic("file_block_walk not implemented");
+       //panic("file_block_walk not implemented");
+       int r;
+       if(filebno > NDIRECT + NINDIRECT)
+            -E_INVAL;
+       if(filebno < NDIRECT) {
+            if(ppdiskbno)
+                *ppdiskbno = &f->f_direct[filebno];
+       }
+       else {
+            if(f->f_indirect == 0) {
+                if(!alloc)
+                    return -E_NOT_FOUND;
+                r = alloc_block();
+                if(r < 0) return -E_NO_DISK;
+                f->f_indirect = r;
+                memset(diskaddr(f->f_indirect), 0, BLKSIZE);
+            }
+            uint32_t *blks = diskaddr(f->f_indirect);
+            *ppdiskbno = &blks[filebno - NDIRECT];
+       }
+       return 0;
 }
 
 // Set *blk to the address in memory where the filebno'th
@@ -150,7 +238,20 @@ int
 file_get_block(struct File *f, uint32_t filebno, char **blk)
 {
        // LAB 5: Your code here.
-       panic("file_get_block not implemented");
+       //panic("file_get_block not implemented");
+       uint32_t *pdiskno;
+       int r;
+
+       r = file_block_walk(f, filebno, &pdiskno, true);
+       if(r < 0) return r;
+
+       if(!*pdiskno) {
+            r = alloc_block();
+            if(r < 0) return -E_NO_DISK;
+            *pdiskno = r;
+       }
+       *blk = diskaddr(*pdiskno);
+       return 0;
 }
 
 // Try to find a file named "name" in dir.  If so, set *file to it.
